@@ -10,6 +10,7 @@ module Tsearch where
 import Control.Monad (void)
 import qualified Data.Aeson as Json
 import Data.Default.Class (Default (def))
+import Data.List (isInfixOf, isPrefixOf, isSuffixOf, sortOn)
 import Data.Text (Text)
 import GHC.Generics
 import Network.HTTP.Types (status400)
@@ -188,4 +189,26 @@ lexeme p = p <* whitespace
 -- Search
 
 find :: Query -> [FunctionRecord] -> [FunctionRecord]
-find _ = take 100
+find (ByName name) fns =
+  take 100
+    $ map fst
+    $ sortOn snd
+    $ filter ((/= MatchesNothing) . snd)
+    $ map (nameDistance name) fns
+find _ fns = take 100 fns
+
+data NameMatch
+  = MatchesFull
+  | MatchesPrefixSuffix
+  | MatchesInfix
+  | MatchesNothing
+  deriving (Show, Eq, Ord)
+
+nameDistance :: String -> FunctionRecord -> (FunctionRecord, NameMatch)
+nameDistance _ fn@(FunctionRecord Nothing _ _ _ _ _ _) = (fn, MatchesNothing)
+nameDistance queryName fn@(FunctionRecord (Just fnName) _ _ _ _ _ _)
+  | queryName == fnName = (fn, MatchesFull)
+  | queryName `isPrefixOf` fnName = (fn, MatchesPrefixSuffix)
+  | queryName `isSuffixOf` fnName = (fn, MatchesPrefixSuffix)
+  | queryName `isInfixOf` fnName = (fn, MatchesInfix)
+  | otherwise = (fn, MatchesNothing)
