@@ -199,7 +199,8 @@ find _ fns = take 100 fns
 
 data NameMatch
   = MatchesFull
-  | MatchesPrefixSuffix
+  | MatchesPrefix
+  | MatchesSuffix
   | MatchesInfix
   | MatchesNothing
   deriving (Show, Eq, Ord)
@@ -208,7 +209,7 @@ nameDistance :: String -> FunctionRecord -> (FunctionRecord, NameMatch)
 nameDistance _ fn@(FunctionRecord Nothing _ _ _ _ _ _) = (fn, MatchesNothing)
 nameDistance queryName fn@(FunctionRecord (Just fnName) _ _ _ _ _ _)
   | queryName == fnName = (fn, MatchesFull)
-  | queryName `isPrefixOf` fnName = (fn, MatchesPrefixSuffix)
-  | queryName `isSuffixOf` fnName = (fn, MatchesPrefixSuffix)
+  | queryName `isPrefixOf` fnName = (fn, MatchesPrefix)
+  | queryName `isSuffixOf` fnName = (fn, MatchesSuffix)
   | queryName `isInfixOf` fnName = (fn, MatchesInfix)
   | otherwise = (fn, MatchesNothing)
