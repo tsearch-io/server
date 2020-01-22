@@ -11,6 +11,7 @@ import Control.Monad (void)
 import qualified Data.Aeson as Json
 import Data.Default.Class (Default (def))
 import Data.List (isInfixOf, isPrefixOf, isSuffixOf, sortOn)
+import qualified Data.Ord as Ord
 import Data.Text (Text)
 import GHC.Generics
 import Network.HTTP.Types (status400)
@@ -80,11 +81,6 @@ instance ErrStatus ResponseError where
 dropLabelPrefix :: Int -> Json.Options
 dropLabelPrefix n =
   Json.defaultOptions {Json.fieldLabelModifier = camel . drop n}
-
-data Query
-  = ByName String
-  | BySignature {qParams :: [String], qReturn :: String}
-  deriving (Show, Eq)
 
 data Param
   = Param
@@ -157,7 +153,16 @@ instance Json.ToJSON Module where
 instance Json.FromJSON Module where
   parseJSON = Json.genericParseJSON $ dropLabelPrefix 1
 
--- Parsing
+-- Query Parsing
+
+data Signature
+  = Signature {sigParams :: [String], sigReturn :: String}
+  deriving (Show, Eq)
+
+data Query
+  = ByName String
+  | BySignature Signature
+  deriving (Show, Eq)
 
 query :: Parser Query
 query = P.try byName <|> bySignature
@@ -168,11 +173,13 @@ byName = ByName <$> (whitespace *> lexeme varName <* P.eof)
 bySignature :: Parser Query
 bySignature =
   BySignature
-    <$> params <* lexeme (C.string "=>")
-    <*> lexeme (P.many1 $ C.noneOf "\n\t") <* P.eof
+    <$> ( Signature
+            <$> params <* lexeme (C.string "=>")
+            <*> lexeme (P.many1 $ C.noneOf "\n\t") <* P.eof
+        )
 
 params :: Parser [String]
-params = P.sepBy (lexeme varName) (lexeme $ P.char '|')
+params = P.sepBy (lexeme (P.many1 $ C.noneOf "=,\n\t")) (lexeme $ P.char ',')
 
 varName :: Parser String
 varName = lexeme ((:) <$> firstChar <*> P.many nonFirstChar)
@@ -195,7 +202,12 @@ find (ByName name) fns =
     $ sortOn snd
     $ filter ((/= MatchesNothing) . snd)
     $ map (nameDistance name) fns
-find _ fns = take 100 fns
+find (BySignature sig) fns =
+  take 100
+    $ map fst
+    $ sortOn (Ord.Down . snd)
+    $ filter ((> 0) . snd)
+    $ map (weighFunctionRecord sig) fns
 
 data NameMatch
   = MatchesFull
@@ -213,3 +225,20 @@ nameDistance queryName fn@(FunctionRecord (Just fnName) _ _ _ _ _ _)
   | queryName `isSuffixOf` fnName = (fn, MatchesSuffix)
   | queryName `isInfixOf` fnName = (fn, MatchesInfix)
   | otherwise = (fn, MatchesNothing)
+
+-- ¯\_(ツ)_/¯
+weighFunctionRecord :: Signature -> FunctionRecord -> (FunctionRecord, Float)
+weighFunctionRecord q fn = (fn, returnWeight + paramsWeight)
+  where
+    returnWeight = if sigReturn q == frReturn fn then 2 else 0
+    paramsWeight = weighParams (sigParams q) (pType <$> frParams fn)
+    weighParams :: [String] -> [String] -> Float
+    weighParams qParams fnParams
+      | length qParams == length fnParams =
+        let both = zip qParams fnParams
+            matches = map (\(a, b) -> if a == b then 1 else 0) both
+            w = sum matches / realToFrac (length qParams)
+         in if w > 0 then w + 1 else w
+      | otherwise =
+        let matches = map (\qp -> if qp `elem` fnParams then 1 else 0) qParams
+         in sum matches / realToFrac (length qParams)
