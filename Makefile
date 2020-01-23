@@ -5,4 +5,4 @@ build:
 
 release:
 	echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin
-	docker push dockerhub-user/my-app:${VERSION}
+	docker push gillchristian/tsearch:${VERSION}
