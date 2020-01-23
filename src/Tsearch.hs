@@ -2,15 +2,18 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeOperators #-}
 
 module Tsearch where
 
+import Control.Lens ((^.))
 import Control.Monad (void)
 import qualified Data.Aeson as Json
 import Data.Default.Class (Default (def))
-import Data.List (isInfixOf, isPrefixOf, isSuffixOf, sortOn)
+import Data.Foldable (fold)
+import Data.List (dropWhileEnd, intersperse, isInfixOf, isPrefixOf, isSuffixOf, sortOn)
 import qualified Data.Ord as Ord
 import Data.Text (Text)
 import GHC.Generics
@@ -19,6 +22,7 @@ import qualified Network.Wai.Handler.Warp as Warp
 import Network.Wai.Middleware.Cors (simpleCors)
 import qualified Network.Wai.Middleware.RequestLogger as Log
 import Network.Wai.Middleware.RequestLogger.JSON (formatAsJSON)
+import qualified Network.Wreq as Wreq
 import Servant ((:<|>) (..), (:>))
 import qualified Servant
 import qualified Servant.Checked.Exceptions as E
@@ -64,9 +68,31 @@ type SearchHandler' = Servant.Handler (E.Envelope '[ResponseError] [FunctionReco
 searchHandler :: [FunctionRecord] -> Maybe String -> SearchHandler'
 searchHandler fns (Just q) =
   case P.parse query "" q of
-    Right s -> E.pureSuccEnvelope $ find s fns
+    Right query' -> E.pureSuccEnvelope $ find query' fns
     Left e -> E.pureErrEnvelope $ InvalidQuery $ show e
 searchHandler _ Nothing = E.pureErrEnvelope MissingQuery
+
+publishToAnalytics :: Query -> [FunctionRecord] -> IO ()
+publishToAnalytics q fns = do
+  let payload = AnalyticsPayload (show q) (take 5 fns) (length fns)
+  -- TODO: Firebase URL
+  r <- Wreq.post "http://localhost:9000" (Json.toJSON payload)
+  let status = r ^. Wreq.responseStatus . Wreq.statusCode
+  putStrLn "Published Analytics"
+  putStrLn $ "Status: " ++ show status
+  putStrLn $ "Query: " ++ show q
+  putStrLn $ show (length fns) ++ " results"
+
+data AnalyticsPayload
+  = AnalyticsPayload
+      { apQuery :: String,
+        apResult :: [FunctionRecord],
+        apCount :: Int
+      }
+  deriving (Generic, Show, Eq)
+
+instance Json.ToJSON AnalyticsPayload where
+  toJSON = Json.genericToJSON $ dropLabelPrefix 2
 
 data ResponseError
   = MissingQuery
@@ -128,7 +154,7 @@ data FunctionRecord
         frDocs :: Maybe String,
         frText :: Maybe String,
         frParams :: [Param],
-        frReturn :: String,
+        frReturnType :: String,
         frLocation :: Location,
         frModule :: String
       }
@@ -156,13 +182,19 @@ instance Json.FromJSON Module where
 -- Query Parsing
 
 data Signature
-  = Signature {sigParams :: [String], sigReturn :: String}
+  = Signature {sigParams :: [String], sigReturnType :: String}
   deriving (Show, Eq)
 
 data Query
   = ByName String
   | BySignature Signature
-  deriving (Show, Eq)
+  deriving (Eq)
+
+instance Show Query where
+  show (ByName name) = name
+  show (BySignature (Signature [] ret)) = "() => " ++ ret
+  show (BySignature (Signature ps ret)) =
+    fold (intersperse ", " ps) ++ " => " ++ ret
 
 query :: Parser Query
 query = P.try byName <|> bySignature
@@ -179,7 +211,10 @@ bySignature =
         )
 
 params :: Parser [String]
-params = P.sepBy (lexeme (P.many1 $ C.noneOf "=,\n\t")) (lexeme $ P.char ',')
+params =
+  P.sepBy
+    (stripEnd <$> lexeme (P.many1 $ C.noneOf "=,\n\t"))
+    (lexeme $ P.char ',')
 
 varName :: Parser String
 varName = lexeme ((:) <$> firstChar <*> P.many nonFirstChar)
@@ -230,7 +265,7 @@ nameDistance queryName fn@(FunctionRecord (Just fnName) _ _ _ _ _ _)
 weighFunctionRecord :: Signature -> FunctionRecord -> (FunctionRecord, Float)
 weighFunctionRecord q fn = (fn, returnWeight + paramsWeight)
   where
-    returnWeight = if sigReturn q == frReturn fn then 2 else 0
+    returnWeight = if sigReturnType q == frReturnType fn then 2 else 0
     paramsWeight = weighParams (sigParams q) (pType <$> frParams fn)
     weighParams :: [String] -> [String] -> Float
     weighParams qParams fnParams
@@ -242,3 +277,7 @@ weighFunctionRecord q fn = (fn, returnWeight + paramsWeight)
       | otherwise =
         let matches = map (\qp -> if qp `elem` fnParams then 1 else 0) qParams
          in sum matches / realToFrac (length qParams)
+
+-- Utils
+stripEnd :: String -> String
+stripEnd = dropWhileEnd (== ' ')
