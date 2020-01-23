@@ -1,11 +1,24 @@
+# Reference:
+# https://www.dev-log.me/Deploying_Haskell:_Painless_CICD_with_Travis,_Docker_and_Digital_Ocean_(or_any_linux_VM)/
 FROM ubuntu:16.04
-RUN mkdir -p /opt/my-app/
-ARG BINARY_PATH                 # The path to our haskell binary, we provide it via ENV variable later
-WORKDIR /opt/my-app
+
+RUN mkdir -p /opt/tsearch/
+
+ARG BINARY_PATH
+
+WORKDIR /opt/tsearch
+
 RUN apt-get update && apt-get install -y \
-  ca-certificates \             # Here you could add more dependencies needed, e.g. I depend on tesseract-ocr
+  ca-certificates \
   libgmp-dev
-ENV LANG C.UTF-8                # If you are parsing text from somewhere, this sets a locale for you and prevents weird behavior
+
+ENV LANG C.UTF-8
 ENV LC_ALL C.UTF-8
-COPY "$BINARY_PATH" /opt/my-app # Coppying the Haskell binary
-CMD ["/opt/my-app/my-app-exe"]  # my-app-exe needs to be the real name of the Haskell excecutable you are copying in
+
+COPY "$BINARY_PATH" /opt/tsearch
+
+COPY modules.json /opt/tsearch
+
+EXPOSE 8080
+
+CMD ["/opt/tsearch/tsearch-exe"]
