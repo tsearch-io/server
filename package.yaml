@@ -17,25 +17,27 @@ description:
   <https://github.com/tsearch-io/server#readme>
 
 dependencies:
-  - base >= 4.7 && < 5
   - aeson
+  - base >= 4.7 && < 5
+  - bytestring
+  - casing
   - data-default-class
+  - http-client
+  - http-types
+  - lens
+  - mtl
   - parsec
   - parsec-numbers ^>= 0.1.0
-  - bytestring
-  - text
-  - http-types
-  - http-client
   - servant
-  - servant-server
   - servant-checked-exceptions
+  - servant-server
+  - text
+  - transformers
   - wai
   - wai-cors
   - wai-extra
   - warp
-  - transformers
-  - mtl
-  - casing
+  - wreq
 
 library:
   source-dirs: src
