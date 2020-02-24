@@ -22,3 +22,8 @@ provided:
 [gillchristian/tsearch](https://hub.docker.com/repository/docker/gillchristian/tsearch).
 At the moment the image only supports running with the provided index. In the
 future it should support user provided index.
+
+## LICENSE
+
+[MIT License](https://github.com/tsearch-io/server/blob/master/LICENSE) ©
+[Christian Gill](https://gillchristian.xyz)
