@@ -10,6 +10,7 @@ import qualified System.Exit as Exit
 import qualified Text.ParserCombinators.Parsec.Number as N
 import qualified Toolbelt
 import qualified Tsearch
+import qualified Tsearch.Query as Tsearch
 
 dieOnLeft :: Either String a -> IO a
 dieOnLeft = either Exit.die pure
@@ -23,8 +24,7 @@ parsePort = fromRight 8080 . Toolbelt.regularParse N.int . fromMaybe "8080"
 main :: IO ()
 main = do
   modulesPath <- Sys.argOr 0 "./modules.json"
-  fns <-
-    flattenModules <$> (dieOnLeft =<< Json.eitherDecodeFileStrict' modulesPath)
+  fns <- dieOnLeft =<< Json.eitherDecodeFileStrict' modulesPath
   when (null fns) $ Exit.die "Modules are empty"
   port <- parsePort <$> Env.lookupEnv "PORT"
   putStrLn $ "{ \"init\": \"Server starting in port " ++ show port ++ "\" }" -- JSON \o/
