@@ -188,9 +188,9 @@ data Query
 
 showQuery :: Query -> String
 showQuery (ByName name) = name
-showQuery (BySignature (Signature [] ret)) = "() => " ++ show ret
+showQuery (BySignature (Signature [] ret)) = "() => " ++ showType ret
 showQuery (BySignature (Signature ps ret)) =
-  listJoin ", " (fmap (showType . paramType) ps) ++ " => " ++ show ret
+  listJoin ", " (fmap (showType . paramType) ps) ++ " => " ++ showType ret
 
 query :: Parser Query
 query = P.try byName <|> bySignature

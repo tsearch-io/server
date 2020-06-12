@@ -5,25 +5,26 @@
 {-# LANGUAGE TypeOperators #-}
 
 module Tsearch.Search
-  ( find,
+  ( search,
     fixtures,
   )
 where
 
+import Data.Bifunctor (bimap)
 import Data.List (isInfixOf, isPrefixOf, isSuffixOf, sortOn)
-import Data.Maybe (isJust)
+import Data.Maybe (catMaybes, isJust)
 import Tsearch.Query
 
 -- Search
 
-find :: Query -> [FunctionRecord] -> [FunctionRecord]
-find (ByName name) fns =
+search :: Query -> [FunctionRecord] -> [FunctionRecord]
+search (ByName name) fns =
   take 100
     $ map fst
     $ sortOn snd
     $ filter ((/= MatchesNothing) . snd)
     $ map (nameDistance name) fns
-find (BySignature sig) fns =
+search (BySignature sig) fns =
   take 100
     $ map fst
     $ filter (isJust . snd)
@@ -49,10 +50,27 @@ nameDistance queryName fn@(FunctionRecord (Just fnName) _ _ _ _ _)
   | queryName `isInfixOf` fnName = (fn, MatchesInfix)
   | otherwise = (fn, MatchesNothing)
 
--- ¯\_(ツ)_/¯
+-- TODO continue here !!!
 signatureCost :: Signature -> FunctionRecord -> (FunctionRecord, Maybe Float)
 signatureCost q fn@(FunctionRecord _ _ _ _ _ b) =
-  (fn, sigtReturnType q ?? sigtReturnType b)
+  (fn, totalCost paramsCost returnCost)
+  where
+    paramsWeighed = uncurry (??) . bimap paramType paramType <$> zip (sigtParameters q) (sigtParameters b)
+    paramsCost = weighParams paramsWeighed $ catMaybes paramsWeighed
+    returnCost = sigtReturnType q ?? sigtReturnType b
+
+totalCost :: Maybe Float -> Maybe Float -> Maybe Float
+totalCost (Just a) (Just b) = Just $ a + b
+totalCost Nothing (Just b) = Just $ b + 0.5 -- TODO How much penalty ???
+totalCost (Just a) Nothing = Just $ a + 0.5 -- TODO How much penalty ???
+totalCost Nothing Nothing = Nothing
+
+weighParams :: [Maybe Float] -> [Float] -> Maybe Float
+weighParams weighed matched
+  | null matched = Nothing
+  | null weighed = Just 0
+  | length weighed == length matched = Just $ (sum matched / realToFrac (length weighed)) - 0.1 * realToFrac (length weighed) -- TODO How much boost ???
+  | otherwise = Just $ sum matched / realToFrac (length weighed) + 0.5 -- TODO How much penalty ???
 
 (??) :: Type -> Type -> Maybe Float
 Any ?? Any = Just 0
@@ -100,6 +118,7 @@ a ?? b
   | a == b = Just 0
   | otherwise = Nothing
 
+-- TODO Extend this with some more checks
 (~?) :: Signature -> FunctionRecord -> (FunctionRecord, Bool)
 (~?) q fn = (fn, inDelta)
   where

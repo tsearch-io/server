@@ -67,7 +67,8 @@ searchHandler :: [FunctionRecord] -> Maybe String -> SearchHandler'
 searchHandler fns (Just q) =
   case P.parse query "" q of
     Right query' -> do
-      let result = find query' fns
+      liftIO $ putStrLn $ showQuery query'
+      let result = search query' fns
       when False $ void . liftIO . forkIO $ publishToAnalytics query' result
       E.pureSuccEnvelope result
     Left e -> E.pureErrEnvelope $ InvalidQuery $ show e
